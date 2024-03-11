@@ -163,6 +163,7 @@ public class GUI extends Application {
 	}
 
 	public void playerMoved(int delta_x, int delta_y, String direction) {
+		// TODO: update logic
 		me.direction = direction;
 		int x = me.getXpos(),y = me.getYpos();
 
@@ -295,6 +296,7 @@ public class GUI extends Application {
 	}
 
 	private void handleMessage(String message) {
+		// TODO: Update logic to handle MOVE and POINT
 		System.out.println("Message received: " + message);
 		String[] parts = message.split(":");
 
@@ -316,6 +318,8 @@ public class GUI extends Application {
 
 	}
 
+	//TODO: handlePoint & handleMove
+
 	private void handleIdentifyMessage(String playerName, int xpos, int ypos) {
 		boolean exists = players.stream().anyMatch(p -> p.name.equals(playerName));
 		if (!exists) {
@@ -333,6 +337,22 @@ public class GUI extends Application {
 
 	private void updatePlayerPositionOnGUI(Player player) {
 		fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(hero_up));
+	}
+
+	private void sendMove(String playerName, int x, int y, String direction) {
+		String message = "MOVE " + playerName + " " + x + " " + y + " " + direction;
+		sendToAll(message);
+	}
+
+	private void sendPointChange(String playerName, int points) {
+		String message = "POINT " + playerName + " " + points;
+		sendToAll(message);
+	}
+
+	private void sendToAll(String message) {
+		for (PrintWriter w : printers) {
+			w.println(message);
+		}
 	}
 }
 
