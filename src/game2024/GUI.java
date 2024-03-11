@@ -1,5 +1,11 @@
+package game2024;
 
-
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,7 +21,7 @@ import javafx.scene.text.*;
 
 public class GUI extends Application {
 
-	public static final int size = 20; 
+	public static final int size = 20;
 	public static final int scene_height = size * 20 + 100;
 	public static final int scene_width = size * 20 + 200;
 
@@ -28,7 +34,11 @@ public class GUI extends Application {
 
 	private Label[][] fields;
 	private TextArea scoreList;
-	
+
+	private List<PrintWriter> printers = new ArrayList<>();
+	private List<Socket> sockets = new ArrayList<>();
+	private ServerSocket serverSocket;
+
 	private  String[] board = {    // 20x20
 			"wwwwwwwwwwwwwwwwwwww",
 			"w        ww        w",
@@ -52,7 +62,7 @@ public class GUI extends Application {
 			"wwwwwwwwwwwwwwwwwwww"
 	};
 
-	
+
 	// -------------------------------------------
 	// | Maze: (0,0)              | Score: (1,0) |
 	// |-----------------------------------------|
@@ -70,12 +80,12 @@ public class GUI extends Application {
 
 			Text mazeLabel = new Text("Maze:");
 			mazeLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
-	
+
 			Text scoreLabel = new Text("Score:");
 			scoreLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
 
 			scoreList = new TextArea();
-			
+
 			GridPane boardGrid = new GridPane();
 
 			image_wall  = new Image(getClass().getResourceAsStream("Image/wall4.png"),size,size,false,false);
@@ -90,41 +100,41 @@ public class GUI extends Application {
 			for (int j=0; j<20; j++) {
 				for (int i=0; i<20; i++) {
 					switch (board[j].charAt(i)) {
-					case 'w':
-						fields[i][j] = new Label("", new ImageView(image_wall));
-						break;
-					case ' ':					
-						fields[i][j] = new Label("", new ImageView(image_floor));
-						break;
-					default: throw new Exception("Illegal field value: "+board[j].charAt(i) );
+						case 'w':
+							fields[i][j] = new Label("", new ImageView(image_wall));
+							break;
+						case ' ':
+							fields[i][j] = new Label("", new ImageView(image_floor));
+							break;
+						default: throw new Exception("Illegal field value: "+board[j].charAt(i) );
 					}
 					boardGrid.add(fields[i][j], i, j);
 				}
 			}
 			scoreList.setEditable(false);
-			
-			
-			grid.add(mazeLabel,  0, 0); 
-			grid.add(scoreLabel, 1, 0); 
+
+
+			grid.add(mazeLabel,  0, 0);
+			grid.add(scoreLabel, 1, 0);
 			grid.add(boardGrid,  0, 1);
 			grid.add(scoreList,  1, 1);
-						
+
 			Scene scene = new Scene(grid,scene_width,scene_height);
 			primaryStage.setScene(scene);
 			primaryStage.show();
 
 			scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
 				switch (event.getCode()) {
-				case UP:    playerMoved(0,-1,"up");    break;
-				case DOWN:  playerMoved(0,+1,"down");  break;
-				case LEFT:  playerMoved(-1,0,"left");  break;
-				case RIGHT: playerMoved(+1,0,"right"); break;
-				default: break;
+					case UP:    playerMoved(0,-1,"up");    break;
+					case DOWN:  playerMoved(0,+1,"down");  break;
+					case LEFT:  playerMoved(-1,0,"left");  break;
+					case RIGHT: playerMoved(+1,0,"right"); break;
+					default: break;
 				}
 			});
-			
-            // Setting up standard players
-			
+
+			// Setting up standard players
+
 			me = new Player("Orville",9,4,"up");
 			players.add(me);
 			fields[9][4].setGraphic(new ImageView(hero_up));
@@ -137,6 +147,7 @@ public class GUI extends Application {
 		} catch(Exception e) {
 			e.printStackTrace();
 		}
+		setupNetworking();
 	}
 
 	public void playerMoved(int delta_x, int delta_y, String direction) {
@@ -145,15 +156,15 @@ public class GUI extends Application {
 
 		if (board[y+delta_y].charAt(x+delta_x)=='w') {
 			me.addPoints(-1);
-		} 
+		}
 		else {
 			Player p = getPlayerAt(x+delta_x,y+delta_y);
 			if (p!=null) {
-              me.addPoints(10);
-              p.addPoints(-10);
+				me.addPoints(10);
+				p.addPoints(-10);
 			} else {
 				me.addPoints(1);
-			
+
 				fields[x][y].setGraphic(new ImageView(image_floor));
 				x+=delta_x;
 				y+=delta_y;
@@ -195,6 +206,109 @@ public class GUI extends Application {
 		return null;
 	}
 
-	
+	private void setupNetworking() {
+		String port = System.getenv("SERVER_SOCKET_PORT");
+		if (port == null) port = "5000";
+
+		// Setting up ServSocket for incoming conn.
+		try {
+			serverSocket = new ServerSocket(Integer.parseInt(port));
+			new Thread(() -> acceptConnections()).start();
+		} catch (IOException e) {
+			throw new RuntimeException("Cannot open server socket", e);
+		}
+
+		// How to connect..
+		String[] otherPlayerAddresses = {"127.?.?.?:????", "127.?.?.?:????"};
+		connectToPlayers(otherPlayerAddresses, me.name, me.getXpos(), me.getYpos());
+	}
+
+	private void acceptConnections() {
+		while (true) {
+			try {
+				Socket socket = serverSocket.accept();
+				setupPlayerSocket(socket);
+			} catch (IOException e) {
+				throw new RuntimeException("Error accepting client connections", e);
+			}
+		}
+	}
+
+	private void connectToPlayers(String[] addresses, String playerName, int xpos, int ypos) {
+		for (String a : addresses) {
+			try {
+				String[] parts = a.split(":");
+				Socket socket = new Socket(parts[0], Integer.parseInt(parts[1]));
+				setupPlayerSocket(socket);
+				PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+				out.println("IDENTIFY " + playerName + " " + xpos + " " + ypos);
+			} catch (IOException e) {
+				System.err.println("Cannot connect to " + a);
+			}
+		}
+	}
+
+	private void setupPlayerSocket(Socket socket) {
+		try {
+			PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+			printers.add(out);
+			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			new Thread(() -> readMessages(in)).start();
+		} catch (IOException e) {
+			throw new RuntimeException("Error setting up player socket", e);
+		}
+	}
+
+	private void readMessages(BufferedReader reader) {
+		String line;
+		try {
+			while ((line = reader.readLine()) != null) {
+				handleMessage(line);
+			}
+		} catch (IOException e) {
+			System.err.println("Error reading message");
+		}
+	}
+
+	private void handleMessage(String message) {
+		System.out.println("Message received: " + message);
+		String[] parts = message.split(":");
+
+		if (parts.length < 1) return;
+
+		String messsageType = parts[0];
+		switch (messsageType) {
+			case "IDENTIFY":
+				if (parts.length != 4) {
+					System.err.println("Invalid IDENTIFY message format");
+					return;
+				}
+				handleIdentifyMessage(parts[1], Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
+				break;
+			default:
+				System.err.println("Unknown message type: " + messsageType);
+				break;
+		}
+
+	}
+
+	private void handleIdentifyMessage(String playerName, int xpos, int ypos) {
+		boolean exists = players.stream().anyMatch(p -> p.name.equals(playerName));
+		if (!exists) {
+			Player newPlayer = new Player(playerName, xpos, ypos, "up");
+			players.add(newPlayer);
+
+			javafx.application.Platform.runLater(() -> {
+				updatePlayerPositionOnGUI(newPlayer);
+				scoreList.setText(getScoreList());
+			});
+		} else {
+			System.err.println("Player with name '" + playerName + "' already exists.");
+		}
+	}
+
+	private void updatePlayerPositionOnGUI(Player player) {
+		fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(hero_up));
+	}
 }
 

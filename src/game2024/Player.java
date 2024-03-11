@@ -1,3 +1,4 @@
+package game2024;
 
 public class Player {
 	String name;
