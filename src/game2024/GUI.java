@@ -7,7 +7,9 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 import javafx.application.Application;
 import javafx.geometry.Insets;
@@ -70,6 +72,13 @@ public class GUI extends Application {
 	// |                          | (1,1)        |
 	// -------------------------------------------
 
+	/**
+	 *  Instructions:
+	 *  Player 1 starts the game, and doesn't enter any IP og ports in the dialog box (server)
+	 *  Player 2 enters player 1's IP and port.
+	 *	Player 3 enters both player 1's and player 2's IP-addresses and ports.
+	 */
+
 	@Override
 	public void start(Stage primaryStage) {
 		try {
@@ -121,6 +130,10 @@ public class GUI extends Application {
 
 			Scene scene = new Scene(grid,scene_width,scene_height);
 			primaryStage.setScene(scene);
+
+			List<String> playerAddresses = showConnectionDialog();
+			setupNetworking(playerAddresses);
+
 			primaryStage.show();
 
 			scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
@@ -147,7 +160,6 @@ public class GUI extends Application {
 		} catch(Exception e) {
 			e.printStackTrace();
 		}
-		setupNetworking();
 	}
 
 	public void playerMoved(int delta_x, int delta_y, String direction) {
@@ -206,21 +218,21 @@ public class GUI extends Application {
 		return null;
 	}
 
-	private void setupNetworking() {
-		String port = System.getenv("SERVER_SOCKET_PORT");
-		if (port == null) port = "5000";
+	private List<String> showConnectionDialog() {
+		TextInputDialog dialog = new TextInputDialog();
+		dialog.setTitle("Connect to players");
+		dialog.setHeaderText("Enter player addresses");
+		dialog.setContentText("Format: ip:port, ...:");
 
-		// Setting up ServSocket for incoming conn.
-		try {
-			serverSocket = new ServerSocket(Integer.parseInt(port));
-			new Thread(() -> acceptConnections()).start();
-		} catch (IOException e) {
-			throw new RuntimeException("Cannot open server socket", e);
-		}
+		Optional<String> result = dialog.showAndWait();
+		return result.map(s -> Arrays.asList(s.split(".\\s*"))).orElseGet(ArrayList::new);
+	}
 
-		// How to connect..
-		String[] otherPlayerAddresses = {"127.?.?.?:????", "127.?.?.?:????"};
-		connectToPlayers(otherPlayerAddresses, me.name, me.getXpos(), me.getYpos());
+	private void setupNetworking(List<String> playerAddresses) {
+		setupServerSocket();
+
+		if (!playerAddresses.isEmpty())
+			connectToPlayers(playerAddresses.toArray(new String[0]), me.name, me.getXpos(), me.getYpos());
 	}
 
 	private void acceptConnections() {
@@ -231,6 +243,18 @@ public class GUI extends Application {
 			} catch (IOException e) {
 				throw new RuntimeException("Error accepting client connections", e);
 			}
+		}
+	}
+
+	private void setupServerSocket() {
+		String port = System.getenv("SERVER_SOCKET_PORT");
+		if (port == null) port = "5000";
+
+		try {
+			serverSocket = new ServerSocket(Integer.parseInt(port));
+			new Thread(this::acceptConnections).start();
+		} catch (IOException e) {
+			throw new RuntimeException("Cannot open server socket", e);
 		}
 	}
 
