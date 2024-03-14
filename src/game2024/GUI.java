@@ -226,7 +226,7 @@ public class GUI extends Application {
 		dialog.setContentText("Format: ip:port, ...:");
 
 		Optional<String> result = dialog.showAndWait();
-		return result.map(s -> Arrays.asList(s.split(".\\s*"))).orElseGet(ArrayList::new);
+		return result.map(s -> Arrays.asList(s.split(",\\s*"))).orElseGet(ArrayList::new);
 	}
 
 	private void setupNetworking(List<String> playerAddresses) {
