@@ -233,7 +233,10 @@ public class GUI extends Application {
 		setupServerSocket();
 
 		if (!playerAddresses.isEmpty())
-			connectToPlayers(playerAddresses.toArray(new String[0]), me.name, me.getXpos(), me.getYpos());
+			if (me == null)
+				connectToPlayers(playerAddresses.toArray(new String[0]), "Loshan", 8, 5);
+			else
+				connectToPlayers(playerAddresses.toArray(new String[0]), me.name, me.getXpos(), me.getYpos());
 	}
 
 	private void acceptConnections() {
@@ -249,7 +252,7 @@ public class GUI extends Application {
 
 	private void setupServerSocket() {
 		String port = System.getenv("SERVER_SOCKET_PORT");
-		if (port == null) port = "5000";
+		if (port == null) port = "7895";
 
 		try {
 			serverSocket = new ServerSocket(Integer.parseInt(port));
@@ -263,10 +266,16 @@ public class GUI extends Application {
 		for (String a : addresses) {
 			try {
 				String[] parts = a.split(":");
+				if (parts.length < 2) {
+					System.err.println("Invalid address format: " + a);
+					continue;
+				}
 				Socket socket = new Socket(parts[0], Integer.parseInt(parts[1]));
 				setupPlayerSocket(socket);
 				PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
 				out.println("IDENTIFY " + playerName + " " + xpos + " " + ypos);
+			} catch (NumberFormatException e) {
+				System.err.println("Invalid port number in address: " + a);
 			} catch (IOException e) {
 				System.err.println("Cannot connect to " + a);
 			}
