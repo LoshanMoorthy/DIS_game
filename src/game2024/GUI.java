@@ -37,9 +37,6 @@ public class GUI extends Application {
 
 	private Label[][] fields;
 	private TextArea scoreList;
-	private TextArea chatDisplay;
-	private TextField chatInput;
-
 
 	private List<PrintWriter> printers = new ArrayList<>();
 	private List<Socket> sockets = new ArrayList<>();
@@ -132,19 +129,6 @@ public class GUI extends Application {
 			grid.add(boardGrid,  0, 1);
 			grid.add(scoreList,  1, 1);
 
-			chatDisplay = new TextArea();
-			chatDisplay.setEditable(false);
-			chatInput = new TextField();
-
-			grid.add(chatDisplay, 0, 2, 2, 1);
-			grid.add(chatInput, 0, 3, 2, 1);
-
-			chatInput.setOnAction(event -> {
-				String message = chatInput.getText();
-				sendChatMessage(me.name, message);
-				chatInput.clear();
-			});
-
 
 			Scene scene = new Scene(grid,scene_width,scene_height);
 			primaryStage.setScene(scene);
@@ -156,11 +140,12 @@ public class GUI extends Application {
 
 			scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
 				switch (event.getCode()) {
-					case UP:    playerMoved(0,-1,"up");    break;
-					case DOWN:  playerMoved(0,+1,"down");  break;
-					case LEFT:  playerMoved(-1,0,"left");  break;
-					case RIGHT: playerMoved(+1,0,"right"); break;
-					default: break;
+					case UP -> playerMoved(0, -1, "up");
+					case DOWN -> playerMoved(0, +1, "down");
+					case LEFT -> playerMoved(-1, 0, "left");
+					case RIGHT -> playerMoved(+1, 0, "right");
+					default -> {
+					}
 				}
 			});
 
@@ -344,7 +329,7 @@ public class GUI extends Application {
 	private void handleMessage(String message) {
 		// TODO: Update logic to handle MOVE and POINT
 		System.out.println("Message received: " + message);
-		String[] split = message.split(" ");
+		String[] split = message.split(" ", 3);
 		switch (split[0]) {
 			case "IDENTIFY" -> handleIdentifyMessage(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]));
 			case "POINT" -> {
@@ -354,12 +339,6 @@ public class GUI extends Application {
 			case "MOVE" -> {
 				if (split.length == 5)
 					handleMove(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]), split[4]);
-			}
-			case "CHAT" -> {
-				if (split.length > 1) {
-					String chatMessage = split[1];
-					javafx.application.Platform.runLater(() -> chatDisplay.appendText(chatMessage + "\n"));
-				}
 			}
 		}
 	}
@@ -377,9 +356,6 @@ public class GUI extends Application {
 	private void handleMove(String playerName, int newX, int newY, String dir) {
 		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
 		if (player != null && isMoveValid(newX, newY)) {
-			player.setXpos(newX);
-			player.setYpos(newY);
-			player.setDirection(dir);
 			updatePlayerPosition(player, newX, newY, dir);
 		}
 	}
@@ -422,12 +398,6 @@ public class GUI extends Application {
 		});
 	}
 
-	private void sendChatMessage(String playerName, String message) {
-		System.out.println("Sending chat message: " + message);
-		String fullMessage = "CHAT " + playerName + ": " + message;
-		sendToAll(fullMessage);
-	}
-
 	private void sendMove(String playerName, int x, int y, String direction) {
 		String message = "MOVE " + playerName + " " + x + " " + y + " " + direction;
 		sendToAll(message);
@@ -439,7 +409,6 @@ public class GUI extends Application {
 	}
 
 	private void sendToAll(String message) {
-		System.out.println("I'm working");
 		for (PrintWriter w : printers) {
 			w.println(message);
 			w.flush();
