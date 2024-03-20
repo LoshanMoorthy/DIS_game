@@ -13,6 +13,7 @@ import java.util.Optional;
 
 import javafx.application.Application;
 import javafx.geometry.Insets;
+import javafx.scene.SpotLight;
 import javafx.stage.Stage;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -343,23 +344,23 @@ public class GUI extends Application {
 	private void handleMessage(String message) {
 		// TODO: Update logic to handle MOVE and POINT
 		System.out.println("Message received: " + message);
-		String[] split = message.split(" ", 2);
+		String[] split = message.split(" ");
 		switch (split[0]) {
-			case "IDENTIFY":
-				handleIdentifyMessage(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]));
-			case "POINT":
+			case "IDENTIFY" -> handleIdentifyMessage(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]));
+			case "POINT" -> {
 				if (split.length == 3)
 					handlePoint(split[1], Integer.parseInt(split[2]));
-				break;
-			case "MOVE":
+			}
+			case "MOVE" -> {
 				if (split.length == 5)
 					handleMove(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]), split[4]);
-				break;
-			case "CHAT":
+			}
+			case "CHAT" -> {
 				if (split.length > 1) {
 					String chatMessage = split[1];
 					javafx.application.Platform.runLater(() -> chatDisplay.appendText(chatMessage + "\n"));
 				}
+			}
 		}
 	}
 
@@ -376,12 +377,7 @@ public class GUI extends Application {
 	private void handleMove(String playerName, int newX, int newY, String dir) {
 		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
 		if (player != null && isMoveValid(newX, newY)) {
-			javafx.application.Platform.runLater(() -> {
-				updatePlayerPositionOnGUI(player, newX, newY, dir);
-				player.setYpos(newY);
-				player.setXpos(newX);
-				player.setDirection(dir);
-			});
+			updatePlayerPosition(player, newX, newY, dir);
 		}
 	}
 
@@ -396,7 +392,7 @@ public class GUI extends Application {
 			players.add(newPlayer);
 			System.out.println("Adding new player: " + playerName + " at (" + xpos + ", " + ypos + ")");
 			javafx.application.Platform.runLater(() -> {
-				updatePlayerPositionOnGUI(newPlayer, xpos, ypos, newPlayer.getDirection());
+				fields[newPlayer.getXpos()][newPlayer.getYpos()].setGraphic(new ImageView(getDirectionImage(newPlayer.getDirection())));
 				scoreList.setText(getScoreList());
 			});
 		} else {
@@ -409,8 +405,15 @@ public class GUI extends Application {
 			fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(image_floor));
 			Image dirImage = getDirectionImage(dir);
 			fields[newX][newY].setGraphic(new ImageView(dirImage));
+		});
+	}
+
+	private void updatePlayerPosition(Player player, int newX, int newY, String dir) {
+		javafx.application.Platform.runLater(() -> {
 			player.setXpos(newX);
 			player.setYpos(newY);
+			player.setDirection(dir);
+			updatePlayerPositionOnGUI(player, newX, newY, dir);
 		});
 	}
 
