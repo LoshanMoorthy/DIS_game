@@ -322,7 +322,7 @@ public class GUI extends Application {
 	private void handleMessage(String message) {
 		// TODO: Update logic to handle MOVE and POINT
 		System.out.println("Message received: " + message);
-		String[] parts = message.split(":");
+		String[] parts = message.split(" ");
 
 		if (parts.length < 1) return;
 
