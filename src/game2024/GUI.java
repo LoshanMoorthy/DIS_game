@@ -230,35 +230,55 @@ public class GUI extends Application {
 	}
 
 	private void setupNetworking(List<String> playerAddresses) {
-		setupServerSocket();
+		new Thread(() -> {
+			setupServerSocket();
+			acceptConnections();
+		}).start();
 
-		if (!playerAddresses.isEmpty())
-			if (me == null)
-				connectToPlayers(playerAddresses.toArray(new String[0]), "Loshan", 8, 5);
-			else
-				connectToPlayers(playerAddresses.toArray(new String[0]), me.name, me.getXpos(), me.getYpos());
+		if (!playerAddresses.isEmpty()) {
+			new Thread(() -> {
+				try {
+					Thread.sleep(1000);
+					String playerName = me == null ? "Loshan" : me.name;
+					int xPos = me == null ? 8 : me.getXpos();
+					int yPos = me == null ? 5 : me.getYpos();
+					connectToPlayers(playerAddresses.toArray(new String[0]), playerName, xPos, yPos);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}).start();
+		}
 	}
 
+
 	private void acceptConnections() {
-		while (true) {
-			try {
+		try {
+			while (true) {
 				Socket socket = serverSocket.accept();
+				System.out.println("Accepted connection from " + socket.getInetAddress());
 				setupPlayerSocket(socket);
-			} catch (IOException e) {
-				throw new RuntimeException("Error accepting client connections", e);
 			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			System.err.println("Error accepting client connections");
 		}
 	}
 
 	private void setupServerSocket() {
-		String port = System.getenv("SERVER_SOCKET_PORT");
-		if (port == null) port = "7895";
-
+		int port = 7895;
 		try {
-			serverSocket = new ServerSocket(Integer.parseInt(port));
+			String envPort = System.getenv("SERVER_SOCKET_PORT");
+			if (envPort != null) {
+				port = Integer.parseInt(envPort);
+			}
+
+			serverSocket = new ServerSocket(port);
+			System.out.println("Server started on port " + port);
+
 			new Thread(this::acceptConnections).start();
 		} catch (IOException e) {
-			throw new RuntimeException("Cannot open server socket", e);
+			e.printStackTrace();
+			throw new RuntimeException("Cannot open server socket on port " + port, e);
 		}
 	}
 
