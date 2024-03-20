@@ -377,6 +377,9 @@ public class GUI extends Application {
 	private void handleMove(String playerName, int newX, int newY, String dir) {
 		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
 		if (player != null && isMoveValid(newX, newY)) {
+			player.setXpos(newX);
+			player.setYpos(newY);
+			player.setDirection(dir);
 			updatePlayerPosition(player, newX, newY, dir);
 		}
 	}

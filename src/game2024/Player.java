@@ -37,7 +37,6 @@ public class Player {
 		return xpos;
 	}
 
-	@Override
 	public void setXpos(int xpos) {
 		this.previousXpos = this.xpos;
 		this.xpos = xpos;
@@ -47,7 +46,6 @@ public class Player {
 		return ypos;
 	}
 
-	@Override
 	public void setYpos(int ypos) {
 		this.previousYpos = this.ypos;
 		this.ypos = ypos;
