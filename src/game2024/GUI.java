@@ -36,6 +36,9 @@ public class GUI extends Application {
 
 	private Label[][] fields;
 	private TextArea scoreList;
+	private TextArea chatDisplay;
+	private TextField chatInput;
+
 
 	private List<PrintWriter> printers = new ArrayList<>();
 	private List<Socket> sockets = new ArrayList<>();
@@ -128,6 +131,20 @@ public class GUI extends Application {
 			grid.add(boardGrid,  0, 1);
 			grid.add(scoreList,  1, 1);
 
+			chatDisplay = new TextArea();
+			chatDisplay.setEditable(false);
+			chatInput = new TextField();
+
+			grid.add(chatDisplay, 0, 2, 2, 1);
+			grid.add(chatInput, 0, 3, 2, 1);
+
+			chatInput.setOnAction(event -> {
+				String message = chatInput.getText();
+				sendChatMessage(me.name, message);
+				chatInput.clear();
+			});
+
+
 			Scene scene = new Scene(grid,scene_width,scene_height);
 			primaryStage.setScene(scene);
 
@@ -163,39 +180,41 @@ public class GUI extends Application {
 		me.direction = direction;
 		int x = me.getXpos(),y = me.getYpos();
 
-		if (board[y+delta_y].charAt(x+delta_x)=='w') {
+		if (board[y + delta_y].charAt(x + delta_x) == 'w') {
 			me.addPoints(-1);
-		}
-		else {
-			Player p = getPlayerAt(x+delta_x,y+delta_y);
-			if (p!=null) {
+			sendPointChange(me.name, me.point);
+		} else {
+			Player p = getPlayerAt(x + delta_x,y + delta_y);
+			if (p != null) {
 				me.addPoints(10);
 				p.addPoints(-10);
+				sendPointChange(me.name, me.point);
+				sendPointChange(p.name, p.point);
 			} else {
 				me.addPoints(1);
-
-				fields[x][y].setGraphic(new ImageView(image_floor));
-				x+=delta_x;
-				y+=delta_y;
-
-				if (direction.equals("right")) {
-					fields[x][y].setGraphic(new ImageView(hero_right));
-				};
-				if (direction.equals("left")) {
-					fields[x][y].setGraphic(new ImageView(hero_left));
-				};
-				if (direction.equals("up")) {
-					fields[x][y].setGraphic(new ImageView(hero_up));
-				};
-				if (direction.equals("down")) {
-					fields[x][y].setGraphic(new ImageView(hero_down));
-				};
-
-				me.setXpos(x);
-				me.setYpos(y);
+				movePlayerOnGUI(x, y, delta_x, delta_y, direction);
+				me.setXpos(x + delta_x);
+				me.setYpos(y + delta_y);
+				sendMove(me.name, me.getXpos(), me.getYpos(), direction);
 			}
 		}
 		scoreList.setText(getScoreList());
+	}
+
+	private void movePlayerOnGUI(int x, int y, int delta_x, int delta_y, String dir) {
+		fields[x][y].setGraphic(new ImageView(image_floor));
+		Image directionImage = getDirectionImage(dir);
+		fields[x + delta_x][y + delta_y].setGraphic(new ImageView(directionImage));
+	}
+
+	private Image getDirectionImage(String dir) {
+		return switch (dir) {
+			case "right" -> hero_right;
+			case "left" -> hero_left;
+			case "up" -> hero_up;
+			case "down" -> hero_down;
+			default -> hero_up;
+		};
 	}
 
 	public String getScoreList() {
@@ -302,47 +321,73 @@ public class GUI extends Application {
 			PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
 			printers.add(out);
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			new Thread(() -> readMessages(in)).start();
+			Thread readerThread = new Thread(() -> {
+				String line;
+				try {
+					while ((line = in.readLine()) != null) {
+						handleMessage(line);
+					}
+				} catch (IOException e) {
+					System.err.println("Error reading message from socket");
+					e.printStackTrace();
+				}
+			});
+			readerThread.setDaemon(true);
+			readerThread.start();
 		} catch (IOException e) {
 			throw new RuntimeException("Error setting up player socket", e);
 		}
 	}
 
-	private void readMessages(BufferedReader reader) {
-		String line;
-		try {
-			while ((line = reader.readLine()) != null) {
-				handleMessage(line);
-			}
-		} catch (IOException e) {
-			System.err.println("Error reading message");
-		}
-	}
 
 	private void handleMessage(String message) {
 		// TODO: Update logic to handle MOVE and POINT
 		System.out.println("Message received: " + message);
-		String[] parts = message.split(" ");
-
-		if (parts.length < 1) return;
-
-		String messsageType = parts[0];
-		switch (messsageType) {
+		String[] split = message.split(" ", 2);
+		switch (split[0]) {
 			case "IDENTIFY":
-				if (parts.length != 4) {
-					System.err.println("Invalid IDENTIFY message format");
-					return;
+				handleIdentifyMessage(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]));
+			case "POINT":
+				if (split.length == 3)
+					handlePoint(split[1], Integer.parseInt(split[2]));
+				break;
+			case "MOVE":
+				if (split.length == 5)
+					handleMove(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]), split[4]);
+				break;
+			case "CHAT":
+				if (split.length > 1) {
+					String chatMessage = split[1];
+					javafx.application.Platform.runLater(() -> chatDisplay.appendText(chatMessage + "\n"));
 				}
-				handleIdentifyMessage(parts[1], Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
-				break;
-			default:
-				System.err.println("Unknown message type: " + messsageType);
-				break;
 		}
-
 	}
 
 	//TODO: handlePoint & handleMove
+
+	private void handlePoint(String playerName, int points) {
+		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
+		if (player != null) {
+			player.addPoints(points);
+			javafx.application.Platform.runLater(() -> scoreList.setText(getScoreList()));
+		}
+	}
+
+	private void handleMove(String playerName, int newX, int newY, String dir) {
+		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
+		if (player != null && isMoveValid(newX, newY)) {
+			javafx.application.Platform.runLater(() -> {
+				updatePlayerPositionOnGUI(player, newX, newY, dir);
+				player.setYpos(newY);
+				player.setXpos(newX);
+				player.setDirection(dir);
+			});
+		}
+	}
+
+	private boolean isMoveValid(int x, int y) {
+		return x >= 0 && x < 20 && y >= 0 && y < 20 && board[y].charAt(x) != 'w' && getPlayerAt(x, y) == null;
+	}
 
 	private void handleIdentifyMessage(String playerName, int xpos, int ypos) {
 		boolean exists = players.stream().anyMatch(p -> p.name.equals(playerName));
@@ -351,7 +396,7 @@ public class GUI extends Application {
 			players.add(newPlayer);
 			System.out.println("Adding new player: " + playerName + " at (" + xpos + ", " + ypos + ")");
 			javafx.application.Platform.runLater(() -> {
-				updatePlayerPositionOnGUI(newPlayer);
+				updatePlayerPositionOnGUI(newPlayer, xpos, ypos, newPlayer.getDirection());
 				scoreList.setText(getScoreList());
 			});
 		} else {
@@ -359,16 +404,21 @@ public class GUI extends Application {
 		}
 	}
 
-	private void updatePlayerPositionOnGUI(Player player) {
+	private void updatePlayerPositionOnGUI(Player player, int newX, int newY, String dir) {
 		javafx.application.Platform.runLater(() -> {
-			int x = player.getXpos();
-			int y = player.getYpos();
-			System.out.println("Updating GUI for player: " + player.name + " to position (" + x + ", " + y + ")");
-			fields[x][y].setGraphic(new ImageView(hero_up));
+			fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(image_floor));
+			Image dirImage = getDirectionImage(dir);
+			fields[newX][newY].setGraphic(new ImageView(dirImage));
+			player.setXpos(newX);
+			player.setYpos(newY);
 		});
 	}
 
-
+	private void sendChatMessage(String playerName, String message) {
+		System.out.println("Sending chat message: " + message);
+		String fullMessage = "CHAT " + playerName + ": " + message;
+		sendToAll(fullMessage);
+	}
 
 	private void sendMove(String playerName, int x, int y, String direction) {
 		String message = "MOVE " + playerName + " " + x + " " + y + " " + direction;
@@ -381,8 +431,10 @@ public class GUI extends Application {
 	}
 
 	private void sendToAll(String message) {
+		System.out.println("I'm working");
 		for (PrintWriter w : printers) {
 			w.println(message);
+			w.flush();
 		}
 	}
 }
