@@ -402,9 +402,11 @@ public class GUI extends Application {
 
 	private void updatePlayerPositionOnGUI(Player player, int newX, int newY, String dir) {
 		javafx.application.Platform.runLater(() -> {
-			fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(image_floor));
+			if (isMoveValid(player.getPreviousXpos(), player.getPreviousYpos()))
+				fields[player.getPreviousXpos()][player.getPreviousYpos()].setGraphic(new ImageView(image_floor));
+
 			Image dirImage = getDirectionImage(dir);
-			fields[newX][newY].setGraphic(new ImageView(dirImage));
+			fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(dirImage));
 		});
 	}
 
