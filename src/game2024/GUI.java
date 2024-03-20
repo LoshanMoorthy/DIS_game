@@ -152,10 +152,6 @@ public class GUI extends Application {
 			players.add(me);
 			fields[9][4].setGraphic(new ImageView(hero_up));
 
-			Player harry = new Player("Harry",14,15,"up");
-			players.add(harry);
-			fields[14][15].setGraphic(new ImageView(hero_up));
-
 			scoreList.setText(getScoreList());
 		} catch(Exception e) {
 			e.printStackTrace();
@@ -240,8 +236,8 @@ public class GUI extends Application {
 				try {
 					Thread.sleep(1000);
 					String playerName = me == null ? "Loshan" : me.name;
-					int xPos = me == null ? 8 : me.getXpos();
-					int yPos = me == null ? 5 : me.getYpos();
+					int xPos = me == null ? 14 : me.getXpos();
+					int yPos = me == null ? 15 : me.getYpos();
 					connectToPlayers(playerAddresses.toArray(new String[0]), playerName, xPos, yPos);
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
@@ -249,7 +245,6 @@ public class GUI extends Application {
 			}).start();
 		}
 	}
-
 
 	private void acceptConnections() {
 		try {
@@ -354,7 +349,7 @@ public class GUI extends Application {
 		if (!exists) {
 			Player newPlayer = new Player(playerName, xpos, ypos, "up");
 			players.add(newPlayer);
-
+			System.out.println("Adding new player: " + playerName + " at (" + xpos + ", " + ypos + ")");
 			javafx.application.Platform.runLater(() -> {
 				updatePlayerPositionOnGUI(newPlayer);
 				scoreList.setText(getScoreList());
@@ -368,9 +363,11 @@ public class GUI extends Application {
 		javafx.application.Platform.runLater(() -> {
 			int x = player.getXpos();
 			int y = player.getYpos();
+			System.out.println("Updating GUI for player: " + player.name + " to position (" + x + ", " + y + ")");
 			fields[x][y].setGraphic(new ImageView(hero_up));
 		});
 	}
+
 
 
 	private void sendMove(String playerName, int x, int y, String direction) {
