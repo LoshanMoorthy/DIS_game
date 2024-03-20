@@ -365,8 +365,13 @@ public class GUI extends Application {
 	}
 
 	private void updatePlayerPositionOnGUI(Player player) {
-		fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(hero_up));
+		javafx.application.Platform.runLater(() -> {
+			int x = player.getXpos();
+			int y = player.getYpos();
+			fields[x][y].setGraphic(new ImageView(hero_up));
+		});
 	}
+
 
 	private void sendMove(String playerName, int x, int y, String direction) {
 		String message = "MOVE " + playerName + " " + x + " " + y + " " + direction;
