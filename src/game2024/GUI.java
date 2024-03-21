@@ -23,9 +23,9 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.text.*;
 import javafx.util.Pair;
 
-
-
 public class GUI extends Application {
+
+    private int currentPlayerIndex = 0; // Index of the player who has the token
 
     private Stage primaryStage;
 
@@ -201,7 +201,8 @@ public class GUI extends Application {
         }
     }
 
-    private void handleMove(String playerName, int xpos, int ypos, String direction) {
+    public synchronized void handleMove(String playerName, int xpos, int ypos, String direction) {
+
         // Find the player to change points
         for (Player p : players) {
             if (p.name.equals(playerName)) {
@@ -209,6 +210,7 @@ public class GUI extends Application {
                 Platform.runLater(() -> playerMoved(p, xpos - p.getXpos(), ypos - p.getYpos(), direction));
             }
         }
+
     }
 
     public void handleIdentify(String name, String xpos, String ypos) {
