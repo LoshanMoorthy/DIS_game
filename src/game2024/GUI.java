@@ -7,13 +7,13 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
-import javafx.scene.SpotLight;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -21,398 +21,473 @@ import javafx.scene.image.*;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.text.*;
+import javafx.util.Pair;
 
 public class GUI extends Application {
 
-	public static final int size = 20;
-	public static final int scene_height = size * 20 + 100;
-	public static final int scene_width = size * 20 + 200;
+    private Stage primaryStage;
 
-	public static Image image_floor;
-	public static Image image_wall;
-	public static Image hero_right,hero_left,hero_up,hero_down;
+    private boolean isGameCentral = false;
 
-	public static Player me;
-	public static List<Player> players = new ArrayList<Player>();
+    private GameLock lock = new GameLock();
 
-	private Label[][] fields;
-	private TextArea scoreList;
+    private boolean hasLock = false;
 
-	private List<PrintWriter> printers = new ArrayList<>();
-	private List<Socket> sockets = new ArrayList<>();
-	private ServerSocket serverSocket;
+    public static final int size = 20;
+    public static final int scene_height = size * 20 + 100;
+    public static final int scene_width = size * 20 + 200;
 
-	private  String[] board = {    // 20x20
-			"wwwwwwwwwwwwwwwwwwww",
-			"w        ww        w",
-			"w w  w  www w  w  ww",
-			"w w  w   ww w  w  ww",
-			"w  w               w",
-			"w w w w w w w  w  ww",
-			"w w     www w  w  ww",
-			"w w     w w w  w  ww",
-			"w   w w  w  w  w   w",
-			"w     w  w  w  w   w",
-			"w ww ww        w  ww",
-			"w  w w    w    w  ww",
-			"w        ww w  w  ww",
-			"w         w w  w  ww",
-			"w        w     w  ww",
-			"w  w              ww",
-			"w  w www  w w  ww ww",
-			"w w      ww w     ww",
-			"w   w   ww  w      w",
-			"wwwwwwwwwwwwwwwwwwww"
-	};
+    public static Image image_floor;
+    public static Image image_wall;
+    public static Image hero_right, hero_left, hero_up, hero_down;
 
+    public static Player me;
+    public static List<Player> players = new ArrayList<Player>();
 
-	// -------------------------------------------
-	// | Maze: (0,0)              | Score: (1,0) |
-	// |-----------------------------------------|
-	// | boardGrid (0,1)          | scorelist    |
-	// |                          | (1,1)        |
-	// -------------------------------------------
+    private Label[][] fields;
+    private TextArea scoreList;
 
-	/**
-	 *  Instructions:
-	 *  Player 1 starts the game, and doesn't enter any IP og ports in the dialog box (server)
-	 *  Player 2 enters player 1's IP and port.
-	 *	Player 3 enters both player 1's and player 2's IP-addresses and ports.
-	 */
+    private ArrayList<Socket> sockets = new ArrayList<>();
+    private ArrayList<PrintWriter> printers = new ArrayList<>();
 
-	@Override
-	public void start(Stage primaryStage) {
-		try {
-			GridPane grid = new GridPane();
-			grid.setHgap(10);
-			grid.setVgap(10);
-			grid.setPadding(new Insets(0, 10, 0, 10));
+    private String[] board = {    // 20x20
+            "wwwwwwwwwwwwwwwwwwww",
+            "w        ww        w",
+            "w w  w  www w  w  ww",
+            "w w  w   ww w  w  ww",
+            "w  w               w",
+            "w w w w w w w  w  ww",
+            "w w     www w  w  ww",
+            "w w     w w w  w  ww",
+            "w   w w  w  w  w   w",
+            "w     w  w  w  w   w",
+            "w ww ww        w  ww",
+            "w  w w    w    w  ww",
+            "w        ww w  w  ww",
+            "w         w w  w  ww",
+            "w        w     w  ww",
+            "w  w              ww",
+            "w  w www  w w  ww ww",
+            "w w      ww w     ww",
+            "w   w   ww  w      w",
+            "wwwwwwwwwwwwwwwwwwww"
+    };
 
-			Text mazeLabel = new Text("Maze:");
-			mazeLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+    // -------------------------------------------
+    // | Maze: (0,0)              | Score: (1,0) |
+    // |-----------------------------------------|
+    // | boardGrid (0,1)          | scorelist    |
+    // |                          | (1,1)        |
+    // -------------------------------------------
 
-			Text scoreLabel = new Text("Score:");
-			scoreLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+    @Override
+    public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
 
-			scoreList = new TextArea();
+        // Open the new game window
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initOwner(primaryStage);
 
-			GridPane boardGrid = new GridPane();
+        GridPane gridPane = new GridPane();
+        gridPane.setPadding(new Insets(20));
+        gridPane.setVgap(10);
+        gridPane.setHgap(10);
 
-			image_wall  = new Image(getClass().getResourceAsStream("Image/wall4.png"),size,size,false,false);
-			image_floor = new Image(getClass().getResourceAsStream("Image/floor1.png"),size,size,false,false);
+        // Player Name input
+        Label playerNameLabel = new Label("Player Name:");
+        TextField playerNameField = new TextField();
+        playerNameField.setPromptText("Enter your name");
 
-			hero_right  = new Image(getClass().getResourceAsStream("Image/heroRight.png"),size,size,false,false);
-			hero_left   = new Image(getClass().getResourceAsStream("Image/heroLeft.png"),size,size,false,false);
-			hero_up     = new Image(getClass().getResourceAsStream("Image/heroUp.png"),size,size,false,false);
-			hero_down   = new Image(getClass().getResourceAsStream("Image/heroDown.png"),size,size,false,false);
+        // Server IP Address input
+        Label serverIPLabel = new Label("Clients IP addresses:");
+        TextArea clientsTextArea = new TextArea();
+        clientsTextArea.setPromptText("Enter server IP addresses of other clients");
 
-			fields = new Label[20][20];
-			for (int j=0; j<20; j++) {
-				for (int i=0; i<20; i++) {
-					switch (board[j].charAt(i)) {
-						case 'w':
-							fields[i][j] = new Label("", new ImageView(image_wall));
-							break;
-						case ' ':
-							fields[i][j] = new Label("", new ImageView(image_floor));
-							break;
-						default: throw new Exception("Illegal field value: "+board[j].charAt(i) );
-					}
-					boardGrid.add(fields[i][j], i, j);
-				}
-			}
-			scoreList.setEditable(false);
+        // Join Game button
+        Button joinButton = new Button("Join Game");
+        joinButton.setOnAction(e -> {
+            String playerName = playerNameField.getText();
+            String[] clientIPs = clientsTextArea.getText().split(System.lineSeparator());
+            startGame(playerName, clientIPs);
+            dialog.close();
+        });
 
+        // Add components to the gridPane
+        gridPane.add(playerNameLabel, 0, 0);
+        gridPane.add(playerNameField, 1, 0);
+        gridPane.add(serverIPLabel, 0, 1, 2, 1);
+        gridPane.add(clientsTextArea, 0, 2, 2, 1);
+        gridPane.add(joinButton, 0, 3, 2, 1);
 
-			grid.add(mazeLabel,  0, 0);
-			grid.add(scoreLabel, 1, 0);
-			grid.add(boardGrid,  0, 1);
-			grid.add(scoreList,  1, 1);
+        Scene scene = new Scene(gridPane, 400, 200);
+        dialog.setScene(scene);
+        dialog.show();
+    }
 
+    public void connect(String[] clientIPs) {
+        for (String ip : clientIPs) {
+            if (ip.isEmpty()) {
+                continue;
+            }
+            Socket sock;
+            String[] split = ip.split(":");
+            try {
+                sock = new Socket(split[0], Integer.parseInt(split[1]));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            sockets.add(sock);
+            setupPlayerSocket(sock);
+        }
 
-			Scene scene = new Scene(grid,scene_width,scene_height);
-			primaryStage.setScene(scene);
+        if (sockets.isEmpty()) {
+            isGameCentral = true;
+        }
 
-			List<String> playerAddresses = showConnectionDialog();
-			setupNetworking(playerAddresses);
+        // Setup thread for accepting connections from other players
+        String port = System.getenv("SERVER_SOCKET_PORT");
+        if (port.isEmpty()) {
+            port = "8000";
+        }
+        ServerSocket serverSocket;
+        try {
+            serverSocket = new ServerSocket(Integer.parseInt(port));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Socket incomingSock = serverSocket.accept();
+                    setupPlayerSocket(incomingSock);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }).start();
+    }
 
-			primaryStage.show();
+    private void setupPlayerSocket(Socket incomingSock) {
+        try {
+            PrintWriter p = new PrintWriter(incomingSock.getOutputStream(), true);
+            this.printers.add(p);
+            identify(p);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 
-			scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-				switch (event.getCode()) {
-					case UP -> playerMoved(0, -1, "up");
-					case DOWN -> playerMoved(0, +1, "down");
-					case LEFT -> playerMoved(-1, 0, "left");
-					case RIGHT -> playerMoved(+1, 0, "right");
-					default -> {
-					}
-				}
-			});
+        new Thread(() -> {
+            try {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(incomingSock.getInputStream()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    handleMessage(line);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }).start();
+    }
 
-			// Setting up standard players
+    private void handleMessage(String message) {
+        System.out.println("Got message: " + message);
 
-			me = new Player("Orville",9,4,"up");
-			players.add(me);
-			fields[9][4].setGraphic(new ImageView(hero_up));
+        // Extract the command
+        String[] split = message.split(" ");
 
-			scoreList.setText(getScoreList());
-		} catch(Exception e) {
-			e.printStackTrace();
-		}
-	}
+        switch (split[0]) {
+            case "IDENTIFY":
+                handleIdentify(split[1], split[2], split[3]);
+                break;
+            case "POINT":
+                handlePoint(split[1], Integer.parseInt(split[2]));
+                break;
+            case "MOVE":
+                handleMove(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]), split[4]);
+                break;
+            case "REQUEST_LOCK":
+                lockRequested(split[1]);
+            case "LOCK_ISSUED":
+                lockIssued(split[1]);
+            case "RELEASE_LOCK":
+                lockReleased();
+        }
+    }
 
-	public void playerMoved(int delta_x, int delta_y, String direction) {
-		// TODO: update logic
-		me.direction = direction;
-		int x = me.getXpos(),y = me.getYpos();
+    private void lockRequested(String playerName) {
+        try {
+            lock.lock();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            sendMessage(String.format("LOCK_ISSUED %s", playerName));
+            // If we are the game central, set hasLock = true
+            if (isGameCentral) {
+                hasLock = true;
+            }
+        }
+    }
 
-		if (board[y + delta_y].charAt(x + delta_x) == 'w') {
-			me.addPoints(-1);
-			sendPointChange(me.name, me.point);
-		} else {
-			Player p = getPlayerAt(x + delta_x,y + delta_y);
-			if (p != null) {
-				me.addPoints(10);
-				p.addPoints(-10);
-				sendPointChange(me.name, me.point);
-				sendPointChange(p.name, p.point);
-			} else {
-				me.addPoints(1);
-				movePlayerOnGUI(x, y, delta_x, delta_y, direction);
-				me.setXpos(x + delta_x);
-				me.setYpos(y + delta_y);
-				sendMove(me.name, me.getXpos(), me.getYpos(), direction);
-			}
-		}
-		scoreList.setText(getScoreList());
-	}
+    private void lockIssued(String playerName) {
+        if (me.name.equals(playerName)) {
+            hasLock = true;
+        }
+    }
 
-	private void movePlayerOnGUI(int x, int y, int delta_x, int delta_y, String dir) {
-		fields[x][y].setGraphic(new ImageView(image_floor));
-		Image directionImage = getDirectionImage(dir);
-		fields[x + delta_x][y + delta_y].setGraphic(new ImageView(directionImage));
-	}
+    private void lockReleased() {
+        if (!isGameCentral) {
+            return;
+        }
 
-	private Image getDirectionImage(String dir) {
-		return switch (dir) {
-			case "right" -> hero_right;
-			case "left" -> hero_left;
-			case "up" -> hero_up;
-			case "down" -> hero_down;
-			default -> hero_up;
-		};
-	}
+        lock.unlock();
+    }
 
-	public String getScoreList() {
-		StringBuffer b = new StringBuffer(100);
-		for (Player p : players) {
-			b.append(p+"\r\n");
-		}
-		return b.toString();
-	}
+    private void handleMove(String playerName, int xpos, int ypos, String direction) {
+        // Find the player to change points
+        for (Player p : players) {
+            if (p.name.equals(playerName)) {
+                // Use Platform.runlater as we modify fx from a thread
+                Platform.runLater(() -> playerMoved(p, xpos - p.getXpos(), ypos - p.getYpos(), direction));
+            }
+        }
+    }
 
-	public Player getPlayerAt(int x, int y) {
-		for (Player p : players) {
-			if (p.getXpos()==x && p.getYpos()==y) {
-				return p;
-			}
-		}
-		return null;
-	}
+    public void handleIdentify(String name, String xpos, String ypos) {
+        addPlayer(new Player(name, Integer.parseInt(xpos), Integer.parseInt(ypos), "up"));
+    }
 
-	private List<String> showConnectionDialog() {
-		TextInputDialog dialog = new TextInputDialog();
-		dialog.setTitle("Connect to players");
-		dialog.setHeaderText("Enter player addresses");
-		dialog.setContentText("Format: ip:port, ...:");
+    public void handlePoint(String playerName, int point) {
+        // Find the player to change points
+        for (Player p : players) {
+            if (p.name.equals(playerName)) {
+                p.point += point;
+            }
+        }
 
-		Optional<String> result = dialog.showAndWait();
-		return result.map(s -> Arrays.asList(s.split(",\\s*"))).orElseGet(ArrayList::new);
-	}
+        scoreList.setText(getScoreList());
+    }
 
-	private void setupNetworking(List<String> playerAddresses) {
-		new Thread(() -> {
-			setupServerSocket();
-			acceptConnections();
-		}).start();
+    private void sendMessage(String message) {
+        System.out.println("Sending message: " + message);
+        for (PrintWriter p : printers) {
+            p.println(message);
+        }
+    }
 
-		if (!playerAddresses.isEmpty()) {
-			new Thread(() -> {
-				try {
-					Thread.sleep(1000);
-					String playerName = me == null ? "Loshan" : me.name;
-					int xPos = me == null ? 14 : me.getXpos();
-					int yPos = me == null ? 15 : me.getYpos();
-					connectToPlayers(playerAddresses.toArray(new String[0]), playerName, xPos, yPos);
-				} catch (InterruptedException e) {
-					Thread.currentThread().interrupt();
-				}
-			}).start();
-		}
-	}
+    public void startGame(String playerName, String[] clientIPs) {
+        try {
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(0, 10, 0, 10));
 
-	private void acceptConnections() {
-		try {
-			while (true) {
-				Socket socket = serverSocket.accept();
-				System.out.println("Accepted connection from " + socket.getInetAddress());
-				setupPlayerSocket(socket);
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-			System.err.println("Error accepting client connections");
-		}
-	}
+            Text mazeLabel = new Text("Maze:");
+            mazeLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
 
-	private void setupServerSocket() {
-		int port = 7895;
-		try {
-			String envPort = System.getenv("SERVER_SOCKET_PORT");
-			if (envPort != null) {
-				port = Integer.parseInt(envPort);
-			}
+            Text scoreLabel = new Text("Score:");
+            scoreLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
 
-			serverSocket = new ServerSocket(port);
-			System.out.println("Server started on port " + port);
+            scoreList = new TextArea();
 
-			new Thread(this::acceptConnections).start();
-		} catch (IOException e) {
-			e.printStackTrace();
-			throw new RuntimeException("Cannot open server socket on port " + port, e);
-		}
-	}
+            GridPane boardGrid = new GridPane();
 
-	private void connectToPlayers(String[] addresses, String playerName, int xpos, int ypos) {
-		for (String a : addresses) {
-			try {
-				String[] parts = a.split(":");
-				if (parts.length < 2) {
-					System.err.println("Invalid address format: " + a);
-					continue;
-				}
-				Socket socket = new Socket(parts[0], Integer.parseInt(parts[1]));
-				setupPlayerSocket(socket);
-				PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-				out.println("IDENTIFY " + playerName + " " + xpos + " " + ypos);
-			} catch (NumberFormatException e) {
-				System.err.println("Invalid port number in address: " + a);
-			} catch (IOException e) {
-				System.err.println("Cannot connect to " + a);
-			}
-		}
-	}
+            image_wall = new Image(getClass().getResourceAsStream("Image/wall4.png"), size, size, false, false);
+            image_floor = new Image(getClass().getResourceAsStream("Image/floor1.png"), size, size, false, false);
 
-	private void setupPlayerSocket(Socket socket) {
-		try {
-			PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-			printers.add(out);
-			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			Thread readerThread = new Thread(() -> {
-				String line;
-				try {
-					while ((line = in.readLine()) != null) {
-						handleMessage(line);
-					}
-				} catch (IOException e) {
-					System.err.println("Error reading message from socket");
-					e.printStackTrace();
-				}
-			});
-			readerThread.setDaemon(true);
-			readerThread.start();
-		} catch (IOException e) {
-			throw new RuntimeException("Error setting up player socket", e);
-		}
-	}
+            hero_right = new Image(getClass().getResourceAsStream("Image/heroRight.png"), size, size, false, false);
+            hero_left = new Image(getClass().getResourceAsStream("Image/heroLeft.png"), size, size, false, false);
+            hero_up = new Image(getClass().getResourceAsStream("Image/heroUp.png"), size, size, false, false);
+            hero_down = new Image(getClass().getResourceAsStream("Image/heroDown.png"), size, size, false, false);
 
+            fields = new Label[20][20];
+            for (int j = 0; j < 20; j++) {
+                for (int i = 0; i < 20; i++) {
+                    switch (board[j].charAt(i)) {
+                        case 'w':
+                            fields[i][j] = new Label("", new ImageView(image_wall));
+                            break;
+                        case ' ':
+                            fields[i][j] = new Label("", new ImageView(image_floor));
+                            break;
+                        default:
+                            throw new Exception("Illegal field value: " + board[j].charAt(i));
+                    }
+                    boardGrid.add(fields[i][j], i, j);
+                }
+            }
+            scoreList.setEditable(false);
 
-	private void handleMessage(String message) {
-		// TODO: Update logic to handle MOVE and POINT
-		System.out.println("Message received: " + message);
-		String[] split = message.split(" ", 3);
-		switch (split[0]) {
-			case "IDENTIFY" -> handleIdentifyMessage(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]));
-			case "POINT" -> {
-				if (split.length == 3)
-					handlePoint(split[1], Integer.parseInt(split[2]));
-			}
-			case "MOVE" -> {
-				if (split.length == 5)
-					handleMove(split[1], Integer.parseInt(split[2]), Integer.parseInt(split[3]), split[4]);
-			}
-		}
-	}
+            grid.add(mazeLabel, 0, 0);
+            grid.add(scoreLabel, 1, 0);
+            grid.add(boardGrid, 0, 1);
+            grid.add(scoreList, 1, 1);
 
-	//TODO: handlePoint & handleMove
+            Scene scene = new Scene(grid, scene_width, scene_height);
+            primaryStage.setScene(scene);
+            primaryStage.show();
 
-	private void handlePoint(String playerName, int points) {
-		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
-		if (player != null) {
-			player.addPoints(points);
-			javafx.application.Platform.runLater(() -> scoreList.setText(getScoreList()));
-		}
-	}
+            scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+                this.getLock();
+                switch (event.getCode()) {
+                    case UP:
+                        playerMoved(me, 0, -1, "up");
+                        break;
+                    case DOWN:
+                        playerMoved(me, 0, +1, "down");
+                        break;
+                    case LEFT:
+                        playerMoved(me, -1, 0, "left");
+                        break;
+                    case RIGHT:
+                        playerMoved(me, +1, 0, "right");
+                        break;
+                    default:
+                        break;
+                }
+                this.releaseLock();
+            });
 
-	private void handleMove(String playerName, int newX, int newY, String dir) {
-		Player player = players.stream().filter(p -> p.name.equals(playerName)).findFirst().orElse(null);
-		if (player != null && isMoveValid(newX, newY)) {
-			updatePlayerPosition(player, newX, newY, dir);
-		}
-	}
+            // Setting up player
+            Pair<Integer, Integer> freePoint = getFreePoint();
+            me = new Player(playerName, freePoint.getKey(), freePoint.getValue(), "up");
+            addPlayer(me);
 
-	private boolean isMoveValid(int x, int y) {
-		return x >= 0 && x < 20 && y >= 0 && y < 20 && board[y].charAt(x) != 'w' && getPlayerAt(x, y) == null;
-	}
+            // Setup network
+            connect(clientIPs);
 
-	private void handleIdentifyMessage(String playerName, int xpos, int ypos) {
-		boolean exists = players.stream().anyMatch(p -> p.name.equals(playerName));
-		if (!exists) {
-			Player newPlayer = new Player(playerName, xpos, ypos, "up");
-			players.add(newPlayer);
-			System.out.println("Adding new player: " + playerName + " at (" + xpos + ", " + ypos + ")");
-			javafx.application.Platform.runLater(() -> {
-				fields[newPlayer.getXpos()][newPlayer.getYpos()].setGraphic(new ImageView(getDirectionImage(newPlayer.getDirection())));
-				scoreList.setText(getScoreList());
-			});
-		} else {
-			System.err.println("Player with name '" + playerName + "' already exists.");
-		}
-	}
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-	private void updatePlayerPositionOnGUI(Player player, int newX, int newY, String dir) {
-		javafx.application.Platform.runLater(() -> {
-			if (isMoveValid(player.getPreviousXpos(), player.getPreviousYpos()))
-				fields[player.getPreviousXpos()][player.getPreviousYpos()].setGraphic(new ImageView(image_floor));
+    public void identify(PrintWriter p) {
+        p.println(String.format("IDENTIFY %s %d %d", me.name, me.xpos, me.ypos));
+    }
 
-			Image dirImage = getDirectionImage(dir);
-			fields[player.getXpos()][player.getYpos()].setGraphic(new ImageView(dirImage));
-		});
-	}
+    public void addPlayer(Player p) {
+        Platform.runLater(() -> { // use Platform.runLater as we modify fx from a thread
+            fields[p.xpos][p.ypos].setGraphic(new ImageView(hero_up));
+            scoreList.setText(getScoreList());
+        });
+        players.add(p);
+    }
 
-	private void updatePlayerPosition(Player player, int newX, int newY, String dir) {
-		javafx.application.Platform.runLater(() -> {
-			player.setXpos(newX);
-			player.setYpos(newY);
-			player.setDirection(dir);
-			updatePlayerPositionOnGUI(player, newX, newY, dir);
-		});
-	}
+    public Pair<Integer, Integer> getFreePoint() {
+        while (true) {
+            int x = ThreadLocalRandom.current().nextInt(0, 20);
+            int y = ThreadLocalRandom.current().nextInt(0, 20);
 
-	private void sendMove(String playerName, int x, int y, String direction) {
-		String message = "MOVE " + playerName + " " + x + " " + y + " " + direction;
-		sendToAll(message);
-	}
+            if (board[x].charAt(y) == 'w') {
+                continue;
+            }
 
-	private void sendPointChange(String playerName, int points) {
-		String message = "POINT " + playerName + " " + points;
-		sendToAll(message);
-	}
+            if (getPlayerAt(x, y) != null) {
+                continue;
+            }
 
-	private void sendToAll(String message) {
-		for (PrintWriter w : printers) {
-			w.println(message);
-			w.flush();
-		}
-	}
+            return new Pair<>(x, y);
+        }
+    }
+
+    public void adjustPoints(Player p, int points) {
+        if (me != p) {
+            return;
+        }
+        sendMessage(String.format("POINT %s %d", p.name, points));
+        p.addPoints(points);
+        scoreList.setText(getScoreList());
+    }
+
+    public void playerMoved(Player player, int delta_x, int delta_y, String direction) {
+        player.direction = direction;
+        int x = player.getXpos(), y = player.getYpos();
+
+        if (board[y + delta_y].charAt(x + delta_x) == 'w') {
+            adjustPoints(player, -1);
+        } else {
+            Player p = getPlayerAt(x + delta_x, y + delta_y);
+            if (p != null) {
+                adjustPoints(player, 10);
+                adjustPoints(p, -10);
+            } else {
+                adjustPoints(player, 1);
+
+                fields[x][y].setGraphic(new ImageView(image_floor));
+                x += delta_x;
+                y += delta_y;
+
+                if (direction.equals("right")) {
+                    fields[x][y].setGraphic(new ImageView(hero_right));
+                }
+                ;
+                if (direction.equals("left")) {
+                    fields[x][y].setGraphic(new ImageView(hero_left));
+                }
+                ;
+                if (direction.equals("up")) {
+                    fields[x][y].setGraphic(new ImageView(hero_up));
+                }
+                ;
+                if (direction.equals("down")) {
+                    fields[x][y].setGraphic(new ImageView(hero_down));
+                }
+                ;
+
+                player.setXpos(x);
+                player.setYpos(y);
+
+                if (player == me) {
+                    sendMessage(String.format("MOVE %s %d %d %s", me.name, me.xpos, me.ypos, me.direction));
+                }
+            }
+        }
+
+    }
+
+    public String getScoreList() {
+        StringBuffer b = new StringBuffer(100);
+        for (Player p : players) {
+            b.append(p + "\r\n");
+        }
+        return b.toString();
+    }
+
+    public Player getPlayerAt(int x, int y) {
+        for (Player p : players) {
+            if (p.getXpos() == x && p.getYpos() == y) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private void getLock() {
+        if (isGameCentral) {
+            lockRequested(me.name);
+        }
+
+        boolean hasRequestedLock = false;
+        while (!hasLock) {
+            if (!hasRequestedLock) {
+                sendMessage(String.format("REQUEST_LOCK %s", me.name));
+                hasRequestedLock = true;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private void releaseLock() {
+        if (isGameCentral) {
+            lock.unlock();
+        }
+        sendMessage(String.format("RELEASE_LOCK %s", me.name));
+        hasLock = false;
+    }
+
 }
 
