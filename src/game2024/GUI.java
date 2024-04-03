@@ -29,7 +29,7 @@ public class GUI extends Application {
 
     private boolean isGameCentral = false;
 
-    private GameLock lock = new GameLock();
+    private final GameLock lock = new GameLock();
 
     private boolean hasLock = false;
 
@@ -84,7 +84,7 @@ public class GUI extends Application {
     public void start(Stage primaryStage) {
         this.primaryStage = primaryStage;
 
-        // Open the new game window
+        // Open a new dialog to get the player name and server IP addresses of the other players
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(primaryStage);
@@ -104,7 +104,7 @@ public class GUI extends Application {
         TextArea clientsTextArea = new TextArea();
         clientsTextArea.setPromptText("Enter server IP addresses of other clients");
 
-        // Join Game button
+        // Join Game button, on click the game starts
         Button joinButton = new Button("Join Game");
         joinButton.setOnAction(e -> {
             String playerName = playerNameField.getText();
@@ -126,6 +126,7 @@ public class GUI extends Application {
     }
 
     public void connect(String[] clientIPs) {
+        // iterate all the other player ips
         for (String ip : clientIPs) {
             if (ip.isEmpty()) {
                 continue;
@@ -141,6 +142,7 @@ public class GUI extends Application {
             setupPlayerSocket(sock);
         }
 
+        // if we did not connect to any other players, we are the game central
         if (sockets.isEmpty()) {
             isGameCentral = true;
         }
@@ -169,14 +171,17 @@ public class GUI extends Application {
     }
 
     private void setupPlayerSocket(Socket incomingSock) {
+        // setup a printer for the socket, and add to the list of printers
         try {
             PrintWriter p = new PrintWriter(incomingSock.getOutputStream(), true);
             this.printers.add(p);
+            // use the IDENTIFY command to identify ourselves when connecting to a player/player connects
             identify(p);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
+        // Setup a reader, and handle each message from the socket
         new Thread(() -> {
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(incomingSock.getInputStream()));
@@ -193,7 +198,7 @@ public class GUI extends Application {
     private void handleMessage(String message) {
         System.out.println("Got message: " + message);
 
-        // Extract the command
+        // Extract the command, by splitting the message on space
         String[] split = message.split(" ");
 
         switch (split[0]) {
@@ -216,30 +221,33 @@ public class GUI extends Application {
     }
 
     private void lockRequested(String playerName) {
+        // If we are the game central, we can issue the lock
+        if (!isGameCentral) {
+            return;
+        }
         try {
             lock.lock();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {
             sendMessage(String.format("LOCK_ISSUED %s", playerName));
-            // If we are the game central, set hasLock = true
-            if (isGameCentral) {
-                hasLock = true;
-            }
+            // Ensure we also lock for ourselves if we are the game server
+            lockIssued(playerName);
         }
     }
 
     private void lockIssued(String playerName) {
+        // When receiving the lock issued command, set hasLock if the message was for us
         if (me.name.equals(playerName)) {
             hasLock = true;
         }
     }
 
     private void lockReleased() {
+        // If we are the game central, we can release the lock
         if (!isGameCentral) {
             return;
         }
-
         lock.unlock();
     }
 
@@ -248,12 +256,13 @@ public class GUI extends Application {
         for (Player p : players) {
             if (p.name.equals(playerName)) {
                 // Use Platform.runlater as we modify fx from a thread
-                Platform.runLater(() -> playerMoved(p, xpos - p.getXpos(), ypos - p.getYpos(), direction));
+                Platform.runLater(() -> playerMoved(p, xpos - p.getXpos(), ypos - p.getYpos(), direction, false));
             }
         }
     }
 
     public void handleIdentify(String name, String xpos, String ypos) {
+        // when a new player identifies itself, add the player to the board
         addPlayer(new Player(name, Integer.parseInt(xpos), Integer.parseInt(ypos), "up"));
     }
 
@@ -265,9 +274,11 @@ public class GUI extends Application {
             }
         }
 
+        // Update the score list
         scoreList.setText(getScoreList());
     }
 
+    // Send a message to all connected players
     private void sendMessage(String message) {
         System.out.println("Sending message: " + message);
         for (PrintWriter p : printers) {
@@ -331,16 +342,16 @@ public class GUI extends Application {
                 this.getLock();
                 switch (event.getCode()) {
                     case UP:
-                        playerMoved(me, 0, -1, "up");
+                        playerMoved(me, 0, -1, "up", true);
                         break;
                     case DOWN:
-                        playerMoved(me, 0, +1, "down");
+                        playerMoved(me, 0, +1, "down", true);
                         break;
                     case LEFT:
-                        playerMoved(me, -1, 0, "left");
+                        playerMoved(me, -1, 0, "left", true);
                         break;
                     case RIGHT:
-                        playerMoved(me, +1, 0, "right");
+                        playerMoved(me, +1, 0, "right", true);
                         break;
                     default:
                         break;
@@ -353,9 +364,8 @@ public class GUI extends Application {
             me = new Player(playerName, freePoint.getKey(), freePoint.getValue(), "up");
             addPlayer(me);
 
-            // Setup network
+            // When done setting up the board, we connect to the other players (if any)
             connect(clientIPs);
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -391,27 +401,29 @@ public class GUI extends Application {
     }
 
     public void adjustPoints(Player p, int points) {
-        if (me != p) {
-            return;
-        }
+        // Only send message about updated points if shouldSendUpdate == true
         sendMessage(String.format("POINT %s %d", p.name, points));
         p.addPoints(points);
         scoreList.setText(getScoreList());
     }
 
-    public void playerMoved(Player player, int delta_x, int delta_y, String direction) {
+    public void playerMoved(Player player, int delta_x, int delta_y, String direction, boolean happenedLocally) {
         player.direction = direction;
         int x = player.getXpos(), y = player.getYpos();
 
         if (board[y + delta_y].charAt(x + delta_x) == 'w') {
-            adjustPoints(player, -1);
+            if (happenedLocally) // only adjust points if this movement was caused locally
+                adjustPoints(player, -1);
         } else {
             Player p = getPlayerAt(x + delta_x, y + delta_y);
             if (p != null) {
-                adjustPoints(player, 10);
-                adjustPoints(p, -10);
+                if (happenedLocally) { // only adjust points if this movement was caused locally
+                    adjustPoints(player, 10);
+                    adjustPoints(p, -10);
+                }
             } else {
-                adjustPoints(player, 1);
+                if (happenedLocally) // only adjust points if this movement was caused locally
+                    adjustPoints(player, 1);
 
                 fields[x][y].setGraphic(new ImageView(image_floor));
                 x += delta_x;
@@ -437,6 +449,7 @@ public class GUI extends Application {
                 player.setXpos(x);
                 player.setYpos(y);
 
+                // Only send message about movement if ourselves (we moved locally)
                 if (player == me) {
                     sendMessage(String.format("MOVE %s %d %d %s", me.name, me.xpos, me.ypos, me.direction));
                 }

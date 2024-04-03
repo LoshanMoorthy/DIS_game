@@ -17,7 +17,6 @@ public class GameLock {
         locked = true;
     }
 
-
     public synchronized void unlock() {
         locked = false;
         notify();
